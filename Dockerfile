@@ -6,7 +6,12 @@ FROM php:8.3-fpm-alpine
 # 2. Install Nginx + build/runtime deps.
 # sqlite-dev: headers for pdo_sqlite below.
 # nodejs/npm: for the Vite asset build.
-RUN apk add --no-cache nginx sqlite-dev nodejs npm
+# su-exec: lightweight user-switching so artisan commands run as
+# www-data, not root — root-owned files (like database.sqlite created
+# during migrate) can't later be written to by the www-data PHP-FPM
+# workers that serve real requests, which is exactly what was causing
+# "attempt to write a readonly database" errors.
+RUN apk add --no-cache nginx sqlite-dev nodejs npm su-exec
 
 # 3. Nginx routing config for Laravel's front controller.
 COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
@@ -36,9 +41,16 @@ RUN composer install --no-dev --optimize-autoloader --no-scripts
 RUN npm cache clean --force && npm install && npm run build
 
 # 7. Standard nginx runtime dir + correct ownership for Laravel's
-# writable paths.
-RUN mkdir -p /run/nginx \
-    && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+# writable paths, INCLUDING database/ — this was previously missing,
+# which meant the sqlite file (created later by `migrate`, running as
+# root) ended up root-owned while PHP-FPM's actual worker processes
+# run as www-data. Root-owned file + non-root writer = readonly error.
+RUN mkdir -p /run/nginx /var/www/html/database \
+    && touch /var/www/html/database/database.sqlite \
+    && chown -R www-data:www-data \
+        /var/www/html/storage \
+        /var/www/html/bootstrap/cache \
+        /var/www/html/database
 
 EXPOSE 80
 
@@ -49,7 +61,14 @@ EXPOSE 80
 # the array (in-memory) cache driver for every command up through
 # migrate avoids touching the real cache table before it's guaranteed
 # to exist; everything after migrate uses whatever's actually in .env.
-CMD CACHE_STORE=array CACHE_DRIVER=array php artisan package:discover --ansi && \
+#
+# Everything that touches the sqlite file (package:discover onward
+# through db:seed) now runs via su-exec www-data — same user that owns
+# database.sqlite and that PHP-FPM's workers run as at request time.
+# Without this, these commands run as root (Docker's default), and any
+# file/table they create is root-owned and unwritable by the app later.
+CMD su-exec www-data sh -c ' \
+    CACHE_STORE=array CACHE_DRIVER=array php artisan package:discover --ansi && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan storage:link || true && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan filament:upgrade && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan livewire:publish --assets && \
@@ -57,5 +76,6 @@ CMD CACHE_STORE=array CACHE_DRIVER=array php artisan package:discover --ansi && 
     php artisan config:cache && \
     php artisan route:cache && \
     php artisan view:cache && \
-    php artisan db:seed --force && \
+    php artisan db:seed --force \
+    ' && \
     php-fpm -D && nginx -g "daemon off;"
