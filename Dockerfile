@@ -62,4 +62,4 @@ CMD CACHE_STORE=array CACHE_DRIVER=array php artisan package:discover --ansi && 
     php artisan route:cache && \
     php artisan view:cache && \
     php artisan db:seed --force && \
-    frankenphp run --config /etc/frankenphp/Caddyfile
+    frankenphp run --config /etc/caddy/Caddyfile
