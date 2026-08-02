@@ -1,8 +1,9 @@
 FROM dunglas/frankenphp:latest-php8.3-bookworm AS runtime
 
-# Node 20 LTS (Debian bookworm's apt nodejs is old/18.x and can trip up modern
-# Vite/Tailwind builds) + curl for the extension installer below.
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+# libsqlite3-dev: needed so pdo_sqlite has headers to compile against below.
+# Node 20 LTS: Debian bookworm's apt nodejs is old/18.x and can trip up
+# modern Vite/Tailwind builds.
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg libsqlite3-dev \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
