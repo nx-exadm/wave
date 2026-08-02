@@ -70,11 +70,11 @@ EXPOSE 80
 # migrate avoids touching the real cache table before it's guaranteed
 # to exist; everything after migrate uses whatever's actually in .env.
 #
-# Everything from package:discover through db:seed now runs via
+# Everything from package:discover through migrate now runs via
 # su-exec www-data — the same user that owns the entire app tree
 # (step 8 above) and that PHP-FPM's workers run as at request time.
 #
-# NOTE: `route:cache` is deliberately NOT run here. This app uses
+# NOTE 1: `route:cache` is deliberately NOT run here. This app uses
 # Laravel Folio for page routing (routes/web.php just calls
 # Wave::routes(); the actual homepage route is registered dynamically
 # by Folio's service provider from resources/views/pages/index.blade.php).
@@ -86,6 +86,17 @@ EXPOSE 80
 # fine since those DO cache correctly. Do not re-add route:cache
 # without first confirming `php artisan folio:cache` exists and is
 # used instead for the Folio-specific portion.
+#
+# NOTE 2: `db:seed --force` is deliberately NOT run here either. It
+# was originally included to populate the database on first boot, but
+# because this CMD runs on every deploy/restart (not just the first
+# one), it was silently overwriting real production data — including
+# an admin email/password that had been changed through the app —
+# back to the seeders' hardcoded defaults on every single redeploy.
+# Seeding is a one-time setup action, not a startup action. If you
+# ever need to re-seed a fresh database (e.g. after wiping it
+# intentionally), run the seed step manually for that one deploy only,
+# then remove it again — never leave it permanently in this CMD.
 CMD su-exec www-data sh -c ' \
     CACHE_STORE=array CACHE_DRIVER=array php artisan package:discover --ansi && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan storage:link || true && \
@@ -93,7 +104,6 @@ CMD su-exec www-data sh -c ' \
     CACHE_STORE=array CACHE_DRIVER=array php artisan livewire:publish --assets && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan migrate --force && \
     php artisan config:cache && \
-    php artisan view:cache && \
-    php artisan db:seed --force \
+    php artisan view:cache \
     ' && \
     php-fpm -D && nginx -g "daemon off;"
