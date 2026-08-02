@@ -65,13 +65,24 @@ RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache
 ENV PORT=10000
 EXPOSE 10000
 
-CMD php artisan package:discover --ansi && \
-    php artisan storage:link || true && \
-    php artisan filament:upgrade && \
-    php artisan livewire:publish --assets && \
+# Laravel 11/12 defaults CACHE_STORE=database, which needs a `cache` table
+# that only exists after `migrate` runs — but every artisan command boots
+# all service providers (including Wave's, which reads cached settings)
+# before the command itself executes. That's what crashed here: something
+# read from `cache` before migrate ever got a chance to create the table.
+#
+# Fix: force the `array` (in-memory) cache driver for every command up
+# through migrate, so nothing touches the real cache table until it's
+# guaranteed to exist. Once migrate finishes, drop the override so
+# config:cache/route:cache/view:cache/db:seed/frankenphp all use whatever
+# cache driver is actually set in .env, table now present.
+CMD CACHE_STORE=array CACHE_DRIVER=array php artisan package:discover --ansi && \
+    CACHE_STORE=array CACHE_DRIVER=array php artisan storage:link || true && \
+    CACHE_STORE=array CACHE_DRIVER=array php artisan filament:upgrade && \
+    CACHE_STORE=array CACHE_DRIVER=array php artisan livewire:publish --assets && \
+    CACHE_STORE=array CACHE_DRIVER=array php artisan migrate --force && \
     php artisan config:cache && \
     php artisan route:cache && \
     php artisan view:cache && \
-    php artisan migrate --force && \
     php artisan db:seed --force && \
     frankenphp run --config /etc/frankenphp/Caddyfile
