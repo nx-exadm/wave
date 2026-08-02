@@ -26,21 +26,19 @@ WORKDIR /app
 # the -bookworm (Debian/glibc) image above is required.
 #
 # The installer's old .phar download URL was retired; it's now distributed
-# as a Composer global package. --php-vesion (not a typo on my end — that's
-# the actual flag name shipped by the tool) and --thread-safe are picked up
-# dynamically based on whether this PHP build is ZTS, since FrankenPHP
-# images can ship either, and installing the wrong TS/NTS binary loads
-# silently-wrong (or not at all).
-RUN mkdir -p /usr/local/etc/php/conf.d \
-    && touch /usr/local/etc/php/conf.d/99-libsql.ini \
-    && export COMPOSER_ALLOW_SUPERUSER=1 \
+# as a Composer global package. Its documented -n flags (--php-vesion etc.)
+# don't match what the shipped v2.1.0 CLI actually accepts, so rather than
+# guess flag names from stale docs again, we let `install -n` auto-detect
+# this PHP build's version/thread-safety/paths on its own — that's the
+# whole point of an "auto installer," and it's the only invocation that's
+# been consistent across doc versions. `install --help` is printed first
+# purely so the real flag list is visible in the build log if this ever
+# needs to be revisited.
+RUN export COMPOSER_ALLOW_SUPERUSER=1 \
     && composer global require darkterminal/turso-php-installer \
     && export PATH="$(composer config --global home)/vendor/bin:$PATH" \
-    && TS_FLAG="$(php -r 'echo PHP_ZTS ? "--thread-safe" : "";')" \
-    && turso-php-installer install -n $TS_FLAG \
-        --php-vesion=8.3 \
-        --php-ini=/usr/local/etc/php/conf.d/99-libsql.ini \
-        --extension-dir="$(php -r 'echo ini_get("extension_dir");')" \
+    && turso-php-installer install --help \
+    && turso-php-installer install -n \
     && php -m | grep -i libsql
 # The final `php -m | grep -i libsql` is a deliberate build-time assertion:
 # if the extension didn't actually load, this line fails the build here,
