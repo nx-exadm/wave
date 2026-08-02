@@ -1,24 +1,13 @@
 FROM dunglas/frankenphp:latest-php8.3-alpine AS runtime
 
-RUN apk add --no-cache libffi-dev shadow nodejs npm curl \
-    && docker-php-ext-install ffi pcntl opcache \
+RUN apk add --no-cache libffi-dev shadow nodejs npm \
+    && docker-php-ext-install pcntl opcache \
     && install-php-extensions @composer exif gd zip
 
-RUN echo "ffi.enable=true" > /usr/local/etc/php/conf.d/docker-php-ext-ffi.ini \
-    && echo "opcache.enable_cli=1" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini
-
-RUN curl -L -o /usr/lib/liblibsql.so https://github.com \
-    && chmod 755 /usr/lib/liblibsql.so
-
 WORKDIR /app
-
-COPY composer.json composer.lock ./
-
-RUN composer install --no-dev --no-autoloader --no-scripts --ignore-platform-req=ext-intl
-
 COPY . .
 
-RUN composer dump-autoload --no-dev --optimize
+RUN composer install --no-dev --optimize-autoloader --ignore-platform-req=ext-intl
 
 RUN npm cache clean --force && npm install
 
