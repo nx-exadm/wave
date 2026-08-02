@@ -75,35 +75,36 @@ EXPOSE 80
 # (step 8 above) and that PHP-FPM's workers run as at request time.
 #
 # NOTE 1: `route:cache` is deliberately NOT run here. This app uses
-# Laravel Folio for page routing (routes/web.php just calls
-# Wave::routes(); the actual homepage route is registered dynamically
-# by Folio's service provider from resources/views/pages/index.blade.php).
-# Laravel's standard route:cache serializes routes to a static PHP
-# file and does not correctly capture Folio's dynamically-resolved
-# page routes — this was confirmed as the cause of the homepage
-# returning an empty 200-OK body with no exception and nothing logged,
-# while normal Route::get()-based routes (Filament/admin) kept working
-# fine since those DO cache correctly. Do not re-add route:cache
-# without first confirming `php artisan folio:cache` exists and is
-# used instead for the Folio-specific portion.
+# Laravel Folio for page routing — Folio registers routes dynamically
+# at boot, and route:cache doesn't correctly capture that, which
+# previously caused the homepage to return an empty 200 body.
 #
-# NOTE 2: `db:seed --force` is deliberately NOT run here either. It
+# NOTE 2: `view:cache` is ALSO deliberately NOT run here. This app
+# uses Livewire Volt anonymous components (@volt(...) blocks, e.g. in
+# wave/resources/views/media/index.blade.php). Volt registers these
+# components in a runtime registry as a side effect of normal request
+# handling — pre-compiling views ahead of time via view:cache produced
+# a cached view referencing a Volt component hash that was never
+# actually registered in the live process's registry, causing
+# "Unable to find component: [volt-anonymous-fragment-...]" 500 errors
+# on any page using @volt (e.g. /admin/media). Views still compile
+# fine on-demand at request time and are cached by OPcache after the
+# first hit, so this costs a negligible amount of one-time compilation
+# per view, not per request.
+#
+# NOTE 3: `db:seed --force` is deliberately NOT run here either. It
 # was originally included to populate the database on first boot, but
 # because this CMD runs on every deploy/restart (not just the first
 # one), it was silently overwriting real production data — including
 # an admin email/password that had been changed through the app —
 # back to the seeders' hardcoded defaults on every single redeploy.
-# Seeding is a one-time setup action, not a startup action. If you
-# ever need to re-seed a fresh database (e.g. after wiping it
-# intentionally), run the seed step manually for that one deploy only,
-# then remove it again — never leave it permanently in this CMD.
+# Seeding is a one-time setup action, not a startup action.
 CMD su-exec www-data sh -c ' \
     CACHE_STORE=array CACHE_DRIVER=array php artisan package:discover --ansi && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan storage:link || true && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan filament:upgrade && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan livewire:publish --assets && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan migrate --force && \
-    php artisan config:cache && \
-    php artisan view:cache \
+    php artisan config:cache \
     ' && \
     php-fpm -D && nginx -g "daemon off;"
