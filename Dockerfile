@@ -7,10 +7,10 @@ FROM php:8.3-fpm-alpine
 # sqlite-dev: headers for pdo_sqlite below.
 # nodejs/npm: for the Vite asset build.
 # su-exec: lightweight user-switching so artisan commands run as
-# www-data, not root — root-owned files (like database.sqlite created
-# during migrate) can't later be written to by the www-data PHP-FPM
-# workers that serve real requests, which is exactly what was causing
-# "attempt to write a readonly database" errors.
+# www-data, not root — root-owned files/symlinks created during
+# migrate, storage:link, or filament:upgrade can't later be
+# written/read by the www-data PHP-FPM workers that serve real
+# requests, which is what caused every permission error so far.
 RUN apk add --no-cache nginx sqlite-dev nodejs npm su-exec
 
 # 3. Nginx routing config for Laravel's front controller.
@@ -40,17 +40,25 @@ RUN composer install --no-dev --optimize-autoloader --no-scripts
 
 RUN npm cache clean --force && npm install && npm run build
 
-# 7. Standard nginx runtime dir + correct ownership for Laravel's
-# writable paths, INCLUDING database/ — this was previously missing,
-# which meant the sqlite file (created later by `migrate`, running as
-# root) ended up root-owned while PHP-FPM's actual worker processes
-# run as www-data. Root-owned file + non-root writer = readonly error.
+# 7. Ensure the sqlite file exists before ownership is set below —
+# otherwise it gets created later (by `migrate`, running as www-data)
+# inside a directory that's already correctly owned, which is fine
+# either way, but creating it now makes ownership fully deterministic.
 RUN mkdir -p /run/nginx /var/www/html/database \
-    && touch /var/www/html/database/database.sqlite \
-    && chown -R www-data:www-data \
-        /var/www/html/storage \
-        /var/www/html/bootstrap/cache \
-        /var/www/html/database
+    && touch /var/www/html/database/database.sqlite
+
+# 8. Re-own the ENTIRE app tree to www-data, not just a few subfolders.
+# Composer and npm (step 6) both ran as root and wrote files as root —
+# vendor/, node_modules build output, public/build assets, all of it.
+# The CMD below runs artisan commands as www-data (via su-exec), and
+# several of those commands write into public/ (storage:link creates
+# a symlink there; filament:upgrade copies JS/CSS assets there). If
+# any part of the tree is still root-owned, those specific commands
+# fail with "Permission denied" even though storage/database work fine
+# — which is exactly the failure just seen. Re-owning everything here,
+# as the last build step, is the only way to guarantee every path the
+# CMD touches is writable by the user actually running it.
+RUN chown -R www-data:www-data /var/www/html
 
 EXPOSE 80
 
@@ -62,11 +70,9 @@ EXPOSE 80
 # migrate avoids touching the real cache table before it's guaranteed
 # to exist; everything after migrate uses whatever's actually in .env.
 #
-# Everything that touches the sqlite file (package:discover onward
-# through db:seed) now runs via su-exec www-data — same user that owns
-# database.sqlite and that PHP-FPM's workers run as at request time.
-# Without this, these commands run as root (Docker's default), and any
-# file/table they create is root-owned and unwritable by the app later.
+# Everything from package:discover through db:seed now runs via
+# su-exec www-data — the same user that owns the entire app tree
+# (step 8 above) and that PHP-FPM's workers run as at request time.
 CMD su-exec www-data sh -c ' \
     CACHE_STORE=array CACHE_DRIVER=array php artisan package:discover --ansi && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan storage:link || true && \
