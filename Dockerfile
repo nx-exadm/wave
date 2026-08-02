@@ -34,17 +34,19 @@ COPY . .
 # to runtime in the original file.
 RUN composer install --no-dev --optimize-autoloader --no-scripts
 
+# Replace the image's default Caddyfile (which defaults to `localhost` with
+# automatic HTTPS/HTTP->HTTPS redirects) with a static one bound to a plain
+# :10000 address. Without this, Caddy redirects HTTP->HTTPS internally,
+# but Render already terminates real TLS at its own edge and forwards
+# plain HTTP — the two redirect loops fight each other forever.
+COPY Caddyfile /etc/caddy/Caddyfile
+
 RUN npm cache clean --force && npm install
 RUN npm run build
 
 RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache
 
 ENV PORT=10000
-# SERVER_NAME is what the default Caddyfile actually listens on — PORT
-# alone is a Render convention, not something Caddy reads. Using a
-# port-only address (no hostname) also disables FrankenPHP's automatic
-# HTTPS, which we don't want here since Render terminates TLS itself.
-ENV SERVER_NAME=":10000"
 EXPOSE 10000
 
 # Laravel 11/12 defaults CACHE_STORE=database, which needs a `cache` table
