@@ -1,4 +1,4 @@
-:10000 {
+:{$PORT} {
     root * /app/public
     encode zstd gzip
     route {
