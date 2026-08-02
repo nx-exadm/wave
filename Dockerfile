@@ -40,6 +40,11 @@ RUN npm run build
 RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache
 
 ENV PORT=10000
+# SERVER_NAME is what the default Caddyfile actually listens on — PORT
+# alone is a Render convention, not something Caddy reads. Using a
+# port-only address (no hostname) also disables FrankenPHP's automatic
+# HTTPS, which we don't want here since Render terminates TLS itself.
+ENV SERVER_NAME=":10000"
 EXPOSE 10000
 
 # Laravel 11/12 defaults CACHE_STORE=database, which needs a `cache` table
