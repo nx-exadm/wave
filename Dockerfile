@@ -47,8 +47,15 @@ RUN export COMPOSER_ALLOW_SUPERUSER=1 \
 
 COPY . .
 
-# --ignore-platform-req=ext-intl is no longer needed: intl is installed above.
-RUN composer install --no-dev --optimize-autoloader
+# --no-scripts: composer's post-autoload-dump scripts (package:discover,
+# storage:link, filament:upgrade, livewire:publish) boot the full Laravel
+# app, which now constructs a real `new LibSQL(...)` connection. At build
+# time DB_SYNC_URL/DB_AUTH_TOKEN don't exist yet (they're runtime env vars
+# on Render), so the extension gets empty credentials and Rust-panics
+# instead of throwing a normal PHP exception. These scripts are moved to
+# CMD below, run at container start once real env vars are present —
+# matching how `migrate`/`db:seed` were already deferred to runtime.
+RUN composer install --no-dev --optimize-autoloader --no-scripts
 
 RUN npm cache clean --force && npm install
 RUN npm run build
@@ -58,7 +65,11 @@ RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache
 ENV PORT=10000
 EXPOSE 10000
 
-CMD php artisan config:cache && \
+CMD php artisan package:discover --ansi && \
+    php artisan storage:link || true && \
+    php artisan filament:upgrade && \
+    php artisan livewire:publish --assets && \
+    php artisan config:cache && \
     php artisan route:cache && \
     php artisan view:cache && \
     php artisan migrate --force && \
