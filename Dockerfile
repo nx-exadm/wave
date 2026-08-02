@@ -73,6 +73,19 @@ EXPOSE 80
 # Everything from package:discover through db:seed now runs via
 # su-exec www-data — the same user that owns the entire app tree
 # (step 8 above) and that PHP-FPM's workers run as at request time.
+#
+# NOTE: `route:cache` is deliberately NOT run here. This app uses
+# Laravel Folio for page routing (routes/web.php just calls
+# Wave::routes(); the actual homepage route is registered dynamically
+# by Folio's service provider from resources/views/pages/index.blade.php).
+# Laravel's standard route:cache serializes routes to a static PHP
+# file and does not correctly capture Folio's dynamically-resolved
+# page routes — this was confirmed as the cause of the homepage
+# returning an empty 200-OK body with no exception and nothing logged,
+# while normal Route::get()-based routes (Filament/admin) kept working
+# fine since those DO cache correctly. Do not re-add route:cache
+# without first confirming `php artisan folio:cache` exists and is
+# used instead for the Folio-specific portion.
 CMD su-exec www-data sh -c ' \
     CACHE_STORE=array CACHE_DRIVER=array php artisan package:discover --ansi && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan storage:link || true && \
@@ -80,7 +93,6 @@ CMD su-exec www-data sh -c ' \
     CACHE_STORE=array CACHE_DRIVER=array php artisan livewire:publish --assets && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan migrate --force && \
     php artisan config:cache && \
-    php artisan route:cache && \
     php artisan view:cache && \
     php artisan db:seed --force \
     ' && \
