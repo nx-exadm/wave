@@ -1,10 +1,7 @@
-<?php
-
-return [
-
-    'migrations' => [
-        'table' => 'migrations',
-        'update_date_on_publish' => false, // disable to preserve original behavior for existing applications
-    ],
-
-];
+        'libsql' => [
+            'driver' => 'libsql',
+            'url' => env('DB_URL'),
+            'token' => env('DB_AUTH_TOKEN'),
+            'database' => env('DB_DATABASE', database_path('database.sqlite')),
+            'prefix' => '',
+        ],
