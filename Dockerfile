@@ -1,65 +1,54 @@
-FROM dunglas/frankenphp:latest-php8.3-bookworm AS runtime
+# 1. PHP 8.3 (matches what's already confirmed working with this
+# composer.json today — bump to a newer PHP later once you've verified
+# Filament/Wave/Livewire compatibility, but no reason to risk that now).
+FROM php:8.3-fpm-alpine
 
-# libsqlite3-dev: needed so pdo_sqlite has headers to compile against below.
-# libcap2-bin: provides setcap, used below to strip frankenphp's baked-in
-# cap_net_bind_service capability — Render's sandboxed runtime refuses to
-# exec ANY binary carrying Linux capabilities ("Operation not permitted"),
-# and we don't need that capability anyway since we bind port 10000, not
-# a privileged (<1024) port.
-# Node 20 LTS: Debian bookworm's apt nodejs is old/18.x and can trip up
-# modern Vite/Tailwind builds.
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg libsqlite3-dev libcap2-bin \
-    && setcap -r "$(which frankenphp)" \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/*
+# 2. Install Nginx + build/runtime deps.
+# sqlite-dev: headers for pdo_sqlite below.
+# nodejs/npm: for the Vite asset build.
+RUN apk add --no-cache nginx sqlite-dev nodejs npm
 
-# pdo_sqlite: PHP's built-in SQLite driver — ships with PHP itself, no
-# external download or native third-party extension needed. This replaces
-# the native libsql extension entirely (see config/database.php for why:
-# that extension aborts the whole process on any SQL error).
-RUN docker-php-ext-install pcntl opcache pdo_sqlite \
-    && install-php-extensions @composer exif gd zip intl
+# 3. Nginx routing config for Laravel's front controller.
+COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 
-WORKDIR /app
+# 4. OPcache — bundled but off by default on this image.
+COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/zz-opcache.ini
 
+# 5. PHP extensions.
+# pdo_sqlite: Laravel's default connection uses SQLite here — plain,
+# built-in, no third-party native extension needed (unlike the libsql
+# extension this app used to use, which crashed the whole PHP process
+# on any SQL error — not something you want anywhere near production).
+COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
+RUN install-php-extensions pdo_sqlite pcntl opcache exif gd zip intl @composer
+
+# 6. Working directory + app code.
+WORKDIR /var/www/html
 COPY . .
 
 # --no-scripts: composer's post-autoload-dump scripts (package:discover,
 # storage:link, filament:upgrade, livewire:publish) boot the full Laravel
-# app. The database file doesn't have any tables yet at build time either
-# way, so anything that queries it here would still fail — these scripts
-# are moved to CMD below, run at container start once migrations have had
-# a chance to run, matching how `migrate`/`db:seed` were already deferred
-# to runtime in the original file.
+# app, and the database has no tables yet at build time — anything that
+# queries it here would fail. These run in CMD below instead, once
+# migrations have had a chance to run.
 RUN composer install --no-dev --optimize-autoloader --no-scripts
 
-# Replace the image's default Caddyfile (which defaults to `localhost` with
-# automatic HTTPS/HTTP->HTTPS redirects) with a static one bound to a plain
-# :10000 address. Without this, Caddy redirects HTTP->HTTPS internally,
-# but Render already terminates real TLS at its own edge and forwards
-# plain HTTP — the two redirect loops fight each other forever.
-COPY Caddyfile /etc/caddy/Caddyfile
+RUN npm cache clean --force && npm install && npm run build
 
-RUN npm cache clean --force && npm install
-RUN npm run build
+# 7. Standard nginx runtime dir + correct ownership for Laravel's
+# writable paths.
+RUN mkdir -p /run/nginx \
+    && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
-RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache
+EXPOSE 80
 
-ENV PORT=10000
-EXPOSE 10000
-
-# Laravel 11/12 defaults CACHE_STORE=database, which needs a `cache` table
-# that only exists after `migrate` runs — but every artisan command boots
-# all service providers (including Wave's, which reads cached settings)
-# before the command itself executes. That's what crashed here: something
-# read from `cache` before migrate ever got a chance to create the table.
-#
-# Fix: force the `array` (in-memory) cache driver for every command up
-# through migrate, so nothing touches the real cache table until it's
-# guaranteed to exist. Once migrate finishes, drop the override so
-# config:cache/route:cache/view:cache/db:seed/frankenphp all use whatever
-# cache driver is actually set in .env, table now present.
+# Laravel 11/12 defaults CACHE_STORE=database, which needs a `cache`
+# table that only exists after `migrate` runs — but every artisan
+# command boots all service providers before the command itself
+# executes, and Wave's provider reads cached settings on boot. Forcing
+# the array (in-memory) cache driver for every command up through
+# migrate avoids touching the real cache table before it's guaranteed
+# to exist; everything after migrate uses whatever's actually in .env.
 CMD CACHE_STORE=array CACHE_DRIVER=array php artisan package:discover --ansi && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan storage:link || true && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan filament:upgrade && \
@@ -69,4 +58,4 @@ CMD CACHE_STORE=array CACHE_DRIVER=array php artisan package:discover --ansi && 
     php artisan route:cache && \
     php artisan view:cache && \
     php artisan db:seed --force && \
-    frankenphp run --config /etc/caddy/Caddyfile
+    php-fpm -D && nginx -g "daemon off;"
