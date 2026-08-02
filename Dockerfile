@@ -27,18 +27,18 @@ WORKDIR /app
 #
 # The installer's old .phar download URL was retired; it's now distributed
 # as a Composer global package. Its documented -n flags (--php-vesion etc.)
-# don't match what the shipped v2.1.0 CLI actually accepts, so rather than
-# guess flag names from stale docs again, we let `install -n` auto-detect
-# this PHP build's version/thread-safety/paths on its own — that's the
-# whole point of an "auto installer," and it's the only invocation that's
-# been consistent across doc versions. `install --help` is printed first
-# purely so the real flag list is visible in the build log if this ever
-# needs to be revisited.
+# don't match what the shipped v2.1.0 CLI actually accepts.
+#
+# --thread-safe is required and is NOT optional here: FrankenPHP's PHP 8.3
+# build is ZTS (confirmed from build logs: extension_dir contains
+# "no-debug-zts-..."). Without this flag the installer's default fetches
+# the NTS build, which loads but crashes with "undefined symbol:
+# executor_globals" — a classic NTS-extension-in-ZTS-PHP ABI mismatch.
 RUN export COMPOSER_ALLOW_SUPERUSER=1 \
     && composer global require darkterminal/turso-php-installer \
     && export PATH="$(composer config --global home)/vendor/bin:$PATH" \
     && turso-php-installer install --help \
-    && turso-php-installer install -n \
+    && turso-php-installer install -n --thread-safe \
     && php -m | grep -i libsql
 # The final `php -m | grep -i libsql` is a deliberate build-time assertion:
 # if the extension didn't actually load, this line fails the build here,
