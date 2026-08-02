@@ -1,9 +1,15 @@
 FROM dunglas/frankenphp:latest-php8.3-bookworm AS runtime
 
 # libsqlite3-dev: needed so pdo_sqlite has headers to compile against below.
+# libcap2-bin: provides setcap, used below to strip frankenphp's baked-in
+# cap_net_bind_service capability — Render's sandboxed runtime refuses to
+# exec ANY binary carrying Linux capabilities ("Operation not permitted"),
+# and we don't need that capability anyway since we bind port 10000, not
+# a privileged (<1024) port.
 # Node 20 LTS: Debian bookworm's apt nodejs is old/18.x and can trip up
 # modern Vite/Tailwind builds.
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg libsqlite3-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg libsqlite3-dev libcap2-bin \
+    && setcap -r "$(which frankenphp)" \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
