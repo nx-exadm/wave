@@ -24,14 +24,21 @@ WORKDIR /app
 # never work on the old -alpine (musl) base image — that's the real reason
 # the previous build failed, and no composer flag can fix it. Switching to
 # the -bookworm (Debian/glibc) image above is required.
+#
+# The installer's old .phar download URL was retired; it's now distributed
+# as a Composer global package. --php-vesion (not a typo on my end — that's
+# the actual flag name shipped by the tool) and --thread-safe are picked up
+# dynamically based on whether this PHP build is ZTS, since FrankenPHP
+# images can ship either, and installing the wrong TS/NTS binary loads
+# silently-wrong (or not at all).
 RUN mkdir -p /usr/local/etc/php/conf.d \
     && touch /usr/local/etc/php/conf.d/99-libsql.ini \
-    && curl --proto '=https' --tlsv1.2 -sSf \
-        "https://darkterminal.github.io/turso-php-installer/dist/turso-php-installer.phar" \
-        -o /usr/local/bin/turso-php-installer \
-    && chmod +x /usr/local/bin/turso-php-installer \
-    && turso-php-installer install -n \
-        --php-version=8.3 \
+    && export COMPOSER_ALLOW_SUPERUSER=1 \
+    && composer global require darkterminal/turso-php-installer \
+    && export PATH="$(composer config --global home)/vendor/bin:$PATH" \
+    && TS_FLAG="$(php -r 'echo PHP_ZTS ? "--thread-safe" : "";')" \
+    && turso-php-installer install -n $TS_FLAG \
+        --php-vesion=8.3 \
         --php-ini=/usr/local/etc/php/conf.d/99-libsql.ini \
         --extension-dir="$(php -r 'echo ini_get("extension_dir");')" \
     && php -m | grep -i libsql
