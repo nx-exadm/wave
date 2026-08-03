@@ -4,37 +4,20 @@ use Wave\Facades\Wave;
 
 Route::get('/plaintest', fn () => 'raw output: [' . setting('site.title', 'FALLBACK') . ']');
 
-Route::get('/plaintest2', function () {
-    try {
-        return view('components.layouts.marketing', [
-            'seo' => [
-                'title' => 'Test Title',
-                'description' => 'Test Description',
-                'image' => url('/og_image.png'),
-                'type' => 'website',
-            ],
-        ])->render();
-    } catch (\Throwable $e) {
-        return 'CAUGHT ERROR: ' . $e->getMessage() . ' | ' . $e->getFile() . ':' . $e->getLine();
-    }
-});
+Route::get('/create-admin-temp', function () {
+    $user = \App\Models\User::create([
+        'name' => 'Admin',
+        'email' => 'admin@example.com',
+        'password' => bcrypt('ChangeThisPassword123!'),
+        'email_verified_at' => now(),
+    ]);
 
-Route::get('/plaintest3', function () {
-    try {
-        return \Illuminate\Support\Facades\Blade::render(
-            '<x-layouts.marketing :seo="$seo">test content</x-layouts.marketing>',
-            [
-                'seo' => [
-                    'title' => 'Test Title',
-                    'description' => 'Test Description',
-                    'image' => url('/og_image.png'),
-                    'type' => 'website',
-                ],
-            ]
-        );
-    } catch (\Throwable $e) {
-        return 'CAUGHT ERROR: ' . $e->getMessage() . ' | ' . $e->getFile() . ':' . $e->getLine();
+    if (class_exists(\Spatie\Permission\Models\Role::class)) {
+        $role = \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin']);
+        $user->assignRole($role);
     }
+
+    return 'Created user: ' . $user->email . ' — DELETE THIS ROUTE NOW.';
 });
 
 Wave::routes();
