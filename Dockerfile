@@ -1,3 +1,4 @@
+
 FROM php:8.3-fpm-alpine
 RUN apk add --no-cache nginx nodejs npm su-exec
 COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
@@ -6,6 +7,12 @@ COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensio
 RUN install-php-extensions pdo_pgsql pcntl opcache exif gd zip intl @composer
 WORKDIR /var/www/html
 COPY . .
+
+# Patch Wave's RolesTableSeeder — a raw insert string breaks on SQLite
+# because of an unescaped apostrophe in a role description.
+RUN grep -rl "they have created an account" database/seeders/ | xargs -r sed -i \
+    "s/If a user has this role they have created an account/If a user has this role, they have created an account/g"
+
 RUN composer install --no-dev --optimize-autoloader --no-scripts
 RUN npm cache clean --force && npm install && npm run build
 RUN mkdir -p /run/nginx \
