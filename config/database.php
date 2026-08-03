@@ -6,6 +6,7 @@ return [
     'connections' => [
         'libsql' => [
             'driver' => 'libsql',
+            'database' => '',
             'url' => env('DB_URL', ''),
             'authToken' => env('DB_AUTH_TOKEN', ''),
             'prefix' => '',
