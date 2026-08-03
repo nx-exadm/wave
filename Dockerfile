@@ -12,6 +12,13 @@ WORKDIR /var/www/html
 COPY . .
 
 RUN composer install --no-dev --optimize-autoloader --no-scripts
+
+# Install the native libSQL PHP extension — this step was missing
+# entirely before, which is very likely why the driver was
+# "Unsupported": the Composer package alone doesn't include the
+# compiled native extension, only the Laravel-side wrapper around it.
+RUN php artisan turso-php:install --no-interaction || true
+
 RUN npm cache clean --force && npm install && npm run build
 
 RUN mkdir -p /run/nginx \
@@ -25,7 +32,6 @@ CMD su-exec www-data sh -c ' \
     CACHE_STORE=array CACHE_DRIVER=array php artisan filament:upgrade && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan livewire:publish --assets && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan migrate --force && \
-    php artisan config:cache && \
-    php artisan view:cache \
+    php artisan config:cache \
     ' && \
     php-fpm -D && nginx -g "daemon off;"
