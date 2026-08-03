@@ -17,7 +17,9 @@ CMD su-exec www-data sh -c ' \
     CACHE_STORE=array CACHE_DRIVER=array php artisan filament:upgrade && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan livewire:publish --assets && \
     CACHE_STORE=array CACHE_DRIVER=array php artisan migrate --force && \
-    CACHE_STORE=array CACHE_DRIVER=array php artisan db:seed --force --class=Database\\Seeders\\ThemesTableSeeder && \
+    if [ ! -f storage/.seeded ]; then \
+        CACHE_STORE=array CACHE_DRIVER=array php artisan db:seed --force && touch storage/.seeded; \
+    fi && \
     php artisan config:cache \
     ' && \
     php-fpm -D && nginx -g "daemon off;"
