@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use App\Database\LayerbaseSqliteConnection;
 use Illuminate\Database\Connectors\PostgresConnector;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
