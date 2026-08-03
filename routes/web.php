@@ -4,20 +4,17 @@ use Wave\Facades\Wave;
 
 Route::get('/plaintest', fn () => 'raw output: [' . setting('site.title', 'FALLBACK') . ']');
 
-Route::get('/create-admin-temp', function () {
-    $user = \App\Models\User::create([
-        'name' => 'Admin',
-        'email' => 'admin@example.com',
-        'password' => bcrypt('ChangeThisPassword123!'),
-        'email_verified_at' => now(),
-    ]);
+Route::get('/activate-theme-temp', function () {
+    $theme = \Wave\Theme::first();
 
-    if (class_exists(\Spatie\Permission\Models\Role::class)) {
-        $role = \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin']);
-        $user->assignRole($role);
+    if (!$theme) {
+        return 'No themes found in the themes table at all — need a different fix, tell Claude this exact message.';
     }
 
-    return 'Created user: ' . $user->email . ' — DELETE THIS ROUTE NOW.';
+    \Wave\Theme::query()->update(['active' => 0]);
+    $theme->update(['active' => 1]);
+
+    return 'Activated theme: ' . $theme->name . ' — DELETE THIS ROUTE NOW.';
 });
 
 Wave::routes();
