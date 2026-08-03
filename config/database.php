@@ -1,17 +1,21 @@
 <?php
 
 return [
-    'default' => env('DB_CONNECTION', 'libsql'),
+    'default' => env('DB_CONNECTION', 'pgsql'),
 
     'connections' => [
-        'libsql' => [
-            'driver' => 'libsql',
-            'database' => '',
-            'url' => env('DB_URL', ''),
-            'authToken' => env('DB_AUTH_TOKEN', ''),
-            'syncInterval' => env('DB_SYNC_INTERVAL', 5),
-            'read_your_writes' => env('DB_READ_YOUR_WRITES', true),
+        'pgsql' => [
+            'driver' => 'pgsql',
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '5432'),
+            'database' => env('DB_DATABASE', 'forge'),
+            'username' => env('DB_USERNAME', 'forge'),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => 'utf8',
             'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'require'),
         ],
     ],
 
