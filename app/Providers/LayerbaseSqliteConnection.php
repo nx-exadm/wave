@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Database;
+namespace App\Providers;
 
 use Illuminate\Database\SQLiteConnection;
 
