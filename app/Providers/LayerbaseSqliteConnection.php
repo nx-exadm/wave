@@ -13,10 +13,8 @@ class LayerbaseSqliteConnection extends SQLiteConnection
 
     /**
      * Laravel's default unprepared() calls PDO::exec(), which the Layerbase
-     * proxy rejects for any statement that returns rows (e.g. bare pragma
-     * reads like "pragma foreign_keys" used internally when SQLite rebuilds
-     * a table for a column change). PDO::query() handles both result-set
-     * and non-result-set statements safely, so route everything through it.
+     * proxy rejects for any statement that returns rows. Route through
+     * PDO::query() instead, which handles both cases safely.
      */
     public function unprepared($query)
     {
@@ -33,5 +31,40 @@ class LayerbaseSqliteConnection extends SQLiteConnection
 
             return $change;
         });
+    }
+
+    /**
+     * Laravel's SQLiteGrammar internally runs $connection->scalar('pragma
+     * foreign_keys') when rebuilding a table for a column change. That
+     * becomes Connection::select(), which normally goes through
+     * PDO::prepare()->execute()->fetchAll(). The Layerbase proxy errors on
+     * that flow for bare PRAGMA reads ("Execute returned results - did you
+     * mean to call query?"), so for that one statement shape we bypass
+     * prepare()/execute() entirely and call PDO::query() directly.
+     */
+    public function select($query, $bindings = [], $useReadPdo = true)
+    {
+        if ($this->isBarePragmaRead($query)) {
+            return $this->run($query, $bindings, function ($query) {
+                if ($this->pretending()) {
+                    return [];
+                }
+
+                $statement = $this->getPdoForSelect(true)->query($query);
+
+                return $statement ? $statement->fetchAll() : [];
+            });
+        }
+
+        return parent::select($query, $bindings, $useReadPdo);
+    }
+
+    /**
+     * Matches bare pragma reads like "pragma foreign_keys" (no "= ON"/"= OFF"),
+     * which return a row, as opposed to pragma writes, which don't.
+     */
+    protected function isBarePragmaRead($query)
+    {
+        return (bool) preg_match('/^\s*pragma\s+\w+\s*;?\s*$/i', $query);
     }
 }
