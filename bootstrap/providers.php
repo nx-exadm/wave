@@ -5,4 +5,5 @@ return [
     App\Providers\Filament\AdminPanelProvider::class,
     App\Providers\FolioServiceProvider::class,
     App\Providers\VoltServiceProvider::class,
+    App\Providers\LayerbaseDatabaseServiceProvider::class,
 ];
