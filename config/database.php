@@ -1,11 +1,7 @@
 <?php
-
 return [
-
     'default' => env('DB_CONNECTION', 'pgsql'),
-
     'connections' => [
-
         'pgsql' => [
             'driver' => 'pgsql',
             'host' => env('DB_HOST', '127.0.0.1'),
@@ -19,7 +15,6 @@ return [
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'require'),
         ],
-
         'layerbase' => [
             'driver' => 'layerbase_sqlite',
             'host' => env('DB_HOST', '127.0.0.1'),
@@ -35,12 +30,9 @@ return [
             // support and will error on.
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
         ],
-
     ],
-
     'migrations' => [
         'table' => 'migrations',
         'update_date_on_publish' => true,
     ],
-
-];
+]; Update this properly
