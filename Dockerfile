@@ -6,19 +6,12 @@ COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/zz-opcache.ini
 
 COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
-RUN install-php-extensions pcntl opcache exif gd zip intl @composer
+RUN install-php-extensions pdo_pgsql pcntl opcache exif gd zip intl @composer
 
 WORKDIR /var/www/html
 COPY . .
 
 RUN composer install --no-dev --optimize-autoloader --no-scripts
-
-# Install the native libSQL PHP extension — this step was missing
-# entirely before, which is very likely why the driver was
-# "Unsupported": the Composer package alone doesn't include the
-# compiled native extension, only the Laravel-side wrapper around it.
-RUN php artisan turso-php:install --no-interaction || true
-
 RUN npm cache clean --force && npm install && npm run build
 
 RUN mkdir -p /run/nginx \
